@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
-import { db, paymentsTable } from "@workspace/db";
+import { db, paymentsTable } from "../db";
 import { desc, ilike, sum, count, and, or, sql } from "drizzle-orm";
-import { ListPaymentsQueryParams } from "@workspace/api-zod";
+import { ListPaymentsQueryParams } from "../validation";
 import { requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();

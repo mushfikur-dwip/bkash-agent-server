@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable } from "../db";
 import { eq } from "drizzle-orm";
-import { LoginBody } from "@workspace/api-zod";
+import { LoginBody } from "../validation";
 import { signToken, requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();
