@@ -14,14 +14,6 @@ import {
 
 const { Pool } = pg;
 
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
-}
-
-const connectionString = process.env.DATABASE_URL;
-
 export const userStatusEnum = pgEnum("user_status", ["active", "inactive"]);
 
 export const usersTable = pgTable("users", {
@@ -56,16 +48,43 @@ export const paymentsTable = pgTable("payments", {
   uniqueIndex("payments_transaction_id_idx").on(table.transactionId),
 ]);
 
-export const pool = new Pool({
-  connectionString,
-  ssl: connectionString.includes("supabase.co")
-    ? { rejectUnauthorized: false }
-    : undefined,
-});
+const schema = {
+  usersTable,
+  paymentsTable,
+};
 
-export const db = drizzle(pool, {
-  schema: {
-    usersTable,
-    paymentsTable,
+type Database = ReturnType<typeof drizzle<typeof schema>>;
+
+let pool: pg.Pool | null = null;
+let dbInstance: Database | null = null;
+
+function getDatabase(): Database {
+  const connectionString = process.env.DATABASE_URL;
+
+  if (!connectionString) {
+    throw new Error(
+      "DATABASE_URL must be set. Did you forget to configure Vercel environment variables?",
+    );
+  }
+
+  if (!pool) {
+    pool = new Pool({
+      connectionString,
+      ssl: connectionString.includes("supabase.co")
+        ? { rejectUnauthorized: false }
+        : undefined,
+    });
+  }
+
+  if (!dbInstance) {
+    dbInstance = drizzle(pool, { schema });
+  }
+
+  return dbInstance;
+}
+
+export const db = new Proxy({} as Database, {
+  get(_target, property, receiver) {
+    return Reflect.get(getDatabase(), property, receiver);
   },
 });

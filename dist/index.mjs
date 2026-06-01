@@ -37291,12 +37291,12 @@ var require_sign2 = __commonJS({
       exp: { isValid: isNumber, message: '"exp" should be a number of seconds' },
       nbf: { isValid: isNumber, message: '"nbf" should be a number of seconds' }
     };
-    function validate(schema, allowUnknown, object, parameterName) {
+    function validate(schema2, allowUnknown, object, parameterName) {
       if (!isPlainObject(object)) {
         throw new Error('Expected "' + parameterName + '" to be a plain object.');
       }
       Object.keys(object).forEach(function(key) {
-        const validator = schema[key];
+        const validator = schema2[key];
         if (!validator) {
           if (!allowUnknown) {
             throw new Error('"' + key + '" is not allowed in "' + parameterName + '"');
@@ -39912,25 +39912,25 @@ var PgEnumColumn = class extends PgColumn {
 function pgEnum(enumName, input) {
   return Array.isArray(input) ? pgEnumWithSchema(enumName, [...input], void 0) : pgEnumObjectWithSchema(enumName, input, void 0);
 }
-function pgEnumWithSchema(enumName, values, schema) {
+function pgEnumWithSchema(enumName, values, schema2) {
   const enumInstance = Object.assign(
     (name) => new PgEnumColumnBuilder(name ?? "", enumInstance),
     {
       enumName,
       enumValues: values,
-      schema,
+      schema: schema2,
       [isPgEnumSym]: true
     }
   );
   return enumInstance;
 }
-function pgEnumObjectWithSchema(enumName, values, schema) {
+function pgEnumObjectWithSchema(enumName, values, schema2) {
   const enumInstance = Object.assign(
     (name) => new PgEnumObjectColumnBuilder(name ?? "", enumInstance),
     {
       enumName,
       enumValues: Object.values(values),
-      schema,
+      schema: schema2,
       [isPgEnumSym]: true
     }
   );
@@ -40048,9 +40048,9 @@ var Table = class {
   [IsDrizzleTable] = true;
   /** @internal */
   [ExtraConfigBuilder] = void 0;
-  constructor(name, schema, baseName) {
+  constructor(name, schema2, baseName) {
     this[TableName] = this[OriginalName] = name;
-    this[Schema] = schema;
+    this[Schema] = schema2;
     this[BaseName] = baseName;
   }
 };
@@ -40430,11 +40430,11 @@ var View = class {
   [ViewBaseConfig];
   /** @internal */
   [IsDrizzleView] = true;
-  constructor({ name: name2, schema, selectedFields, query }) {
+  constructor({ name: name2, schema: schema2, selectedFields, query }) {
     this[ViewBaseConfig] = {
       name: name2,
       originalName: name2,
-      schema,
+      schema: schema2,
       selectedFields,
       query,
       isExisting: !query,
@@ -42146,8 +42146,8 @@ var PgTable = class extends Table {
   /** @internal */
   [Table.Symbol.ExtraConfigColumns] = {};
 };
-function pgTableWithSchema(name, columns, extraConfig, schema, baseName = name) {
-  const rawTable = new PgTable(name, schema, baseName);
+function pgTableWithSchema(name, columns, extraConfig, schema2, baseName = name) {
+  const rawTable = new PgTable(name, schema2, baseName);
   const parsedColumns = typeof columns === "function" ? columns(getPgColumnBuilders()) : columns;
   const builtColumns = Object.fromEntries(
     Object.entries(parsedColumns).map(([name2, colBuilderBase]) => {
@@ -42348,18 +42348,18 @@ var CasingCache = class {
   }
   getColumnCasing(column) {
     if (!column.keyAsName) return column.name;
-    const schema = column.table[Table.Symbol.Schema] ?? "public";
+    const schema2 = column.table[Table.Symbol.Schema] ?? "public";
     const tableName = column.table[Table.Symbol.OriginalName];
-    const key = `${schema}.${tableName}.${column.name}`;
+    const key = `${schema2}.${tableName}.${column.name}`;
     if (!this.cache[key]) {
       this.cacheTable(column.table);
     }
     return this.cache[key];
   }
   cacheTable(table) {
-    const schema = table[Table.Symbol.Schema] ?? "public";
+    const schema2 = table[Table.Symbol.Schema] ?? "public";
     const tableName = table[Table.Symbol.OriginalName];
-    const tableKey = `${schema}.${tableName}`;
+    const tableKey = `${schema2}.${tableName}`;
     if (!this.cachedTables[tableKey]) {
       for (const column of Object.values(table[Table.Symbol.Columns])) {
         const columnKey = `${tableKey}.${column.name}`;
@@ -42610,14 +42610,14 @@ function getOrderByOperators() {
     desc
   };
 }
-function extractTablesRelationalConfig(schema, configHelpers) {
-  if (Object.keys(schema).length === 1 && "default" in schema && !is(schema["default"], Table)) {
-    schema = schema["default"];
+function extractTablesRelationalConfig(schema2, configHelpers) {
+  if (Object.keys(schema2).length === 1 && "default" in schema2 && !is(schema2["default"], Table)) {
+    schema2 = schema2["default"];
   }
   const tableNamesMap = {};
   const relationsBuffer = {};
   const tablesConfig = {};
-  for (const [key, value] of Object.entries(schema)) {
+  for (const [key, value] of Object.entries(schema2)) {
     if (is(value, Table)) {
       const dbName = getTableUniqueName(value);
       const bufferedRelations = relationsBuffer[dbName];
@@ -42688,7 +42688,7 @@ function createMany(sourceTable) {
     return new Many(sourceTable, referencedTable, config);
   };
 }
-function normalizeRelation(schema, tableNamesMap, relation) {
+function normalizeRelation(schema2, tableNamesMap, relation) {
   if (is(relation, One) && relation.config) {
     return {
       fields: relation.config.fields,
@@ -42701,7 +42701,7 @@ function normalizeRelation(schema, tableNamesMap, relation) {
       `Table "${relation.referencedTable[Table.Symbol.Name]}" not found in schema`
     );
   }
-  const referencedTableConfig = schema[referencedTableTsName];
+  const referencedTableConfig = schema2[referencedTableTsName];
   if (!referencedTableConfig) {
     throw new Error(`Table "${referencedTableTsName}" not found in schema`);
   }
@@ -43683,7 +43683,7 @@ var PgDialect = class {
   // }
   buildRelationalQueryWithoutPK({
     fullSchema,
-    schema,
+    schema: schema2,
     tableNamesMap,
     table,
     tableConfig,
@@ -43779,7 +43779,7 @@ var PgDialect = class {
         queryConfig: selectedRelationConfigValue,
         relation
       } of selectedRelations) {
-        const normalizedRelation = normalizeRelation(schema, tableNamesMap, relation);
+        const normalizedRelation = normalizeRelation(schema2, tableNamesMap, relation);
         const relationTableName = getTableUniqueName(relation.referencedTable);
         const relationTableTsName = tableNamesMap[relationTableName];
         const relationTableAlias = `${tableAlias}_${selectedRelationTsKey}`;
@@ -43793,10 +43793,10 @@ var PgDialect = class {
         );
         const builtRelation = this.buildRelationalQueryWithoutPK({
           fullSchema,
-          schema,
+          schema: schema2,
           tableNamesMap,
           table: fullSchema[relationTableTsName],
-          tableConfig: schema[relationTableTsName],
+          tableConfig: schema2[relationTableTsName],
           queryConfig: is(relation, One) ? selectedRelationConfigValue === true ? { limit: 1 } : { ...selectedRelationConfigValue, limit: 1 } : selectedRelationConfigValue,
           tableAlias: relationTableAlias,
           joinOn: joinOn2,
@@ -45437,9 +45437,9 @@ var PgCountBuilder = class _PgCountBuilder extends SQL {
 
 // node_modules/drizzle-orm/pg-core/query-builders/query.js
 var RelationalQueryBuilder = class {
-  constructor(fullSchema, schema, tableNamesMap, table, tableConfig, dialect, session) {
+  constructor(fullSchema, schema2, tableNamesMap, table, tableConfig, dialect, session) {
     this.fullSchema = fullSchema;
-    this.schema = schema;
+    this.schema = schema2;
     this.tableNamesMap = tableNamesMap;
     this.table = table;
     this.tableConfig = tableConfig;
@@ -45475,10 +45475,10 @@ var RelationalQueryBuilder = class {
   }
 };
 var PgRelationalQuery = class extends QueryPromise {
-  constructor(fullSchema, schema, tableNamesMap, table, tableConfig, dialect, session, config, mode) {
+  constructor(fullSchema, schema2, tableNamesMap, table, tableConfig, dialect, session, config, mode) {
     super();
     this.fullSchema = fullSchema;
-    this.schema = schema;
+    this.schema = schema2;
     this.tableNamesMap = tableNamesMap;
     this.table = table;
     this.tableConfig = tableConfig;
@@ -45579,13 +45579,13 @@ var PgRaw = class extends QueryPromise {
 
 // node_modules/drizzle-orm/pg-core/db.js
 var PgDatabase = class {
-  constructor(dialect, session, schema) {
+  constructor(dialect, session, schema2) {
     this.dialect = dialect;
     this.session = session;
-    this._ = schema ? {
-      schema: schema.schema,
-      fullSchema: schema.fullSchema,
-      tableNamesMap: schema.tableNamesMap,
+    this._ = schema2 ? {
+      schema: schema2.schema,
+      fullSchema: schema2.fullSchema,
+      tableNamesMap: schema2.tableNamesMap,
       session
     } : {
       schema: void 0,
@@ -45597,10 +45597,10 @@ var PgDatabase = class {
     if (this._.schema) {
       for (const [tableName, columns] of Object.entries(this._.schema)) {
         this.query[tableName] = new RelationalQueryBuilder(
-          schema.fullSchema,
+          schema2.fullSchema,
           this._.schema,
           this._.tableNamesMap,
-          schema.fullSchema[tableName],
+          schema2.fullSchema[tableName],
           columns,
           dialect,
           session
@@ -46015,9 +46015,9 @@ var PgSession = class {
   }
 };
 var PgTransaction = class extends PgDatabase {
-  constructor(dialect, session, schema, nestedIndex = 0) {
-    super(dialect, session, schema);
-    this.schema = schema;
+  constructor(dialect, session, schema2, nestedIndex = 0) {
+    super(dialect, session, schema2);
+    this.schema = schema2;
     this.nestedIndex = nestedIndex;
   }
   static [entityKind] = "PgTransaction";
@@ -46188,10 +46188,10 @@ var NodePgPreparedQuery = class extends PgPreparedQuery {
   }
 };
 var NodePgSession = class _NodePgSession extends PgSession {
-  constructor(client, dialect, schema, options = {}) {
+  constructor(client, dialect, schema2, options = {}) {
     super(dialect);
     this.client = client;
-    this.schema = schema;
+    this.schema = schema2;
     this.options = options;
     this.logger = options.logger ?? new NoopLogger();
     this.cache = options.cache ?? new NoopCache();
@@ -46267,8 +46267,8 @@ var NodePgDriver = class {
     this.options = options;
   }
   static [entityKind] = "NodePgDriver";
-  createSession(schema) {
-    return new NodePgSession(this.client, this.dialect, schema, {
+  createSession(schema2) {
+    return new NodePgSession(this.client, this.dialect, schema2, {
       logger: this.options.logger,
       cache: this.options.cache
     });
@@ -46285,21 +46285,21 @@ function construct(client, config = {}) {
   } else if (config.logger !== false) {
     logger2 = config.logger;
   }
-  let schema;
+  let schema2;
   if (config.schema) {
     const tablesConfig = extractTablesRelationalConfig(
       config.schema,
       createTableRelationsHelpers
     );
-    schema = {
+    schema2 = {
       fullSchema: config.schema,
       schema: tablesConfig.tables,
       tableNamesMap: tablesConfig.tableNamesMap
     };
   }
   const driver = new NodePgDriver(client, dialect, { logger: logger2, cache: config.cache });
-  const session = driver.createSession(schema);
-  const db2 = new NodePgDatabase(dialect, session, schema);
+  const session = driver.createSession(schema2);
+  const db2 = new NodePgDatabase(dialect, session, schema2);
   db2.$client = client;
   db2.$cache = config.cache;
   if (db2.$cache) {
@@ -46333,12 +46333,6 @@ function drizzle(...params) {
 
 // src/db/index.ts
 var { Pool: Pool3 } = esm_default;
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?"
-  );
-}
-var connectionString = process.env.DATABASE_URL;
 var userStatusEnum = pgEnum("user_status", ["active", "inactive"]);
 var usersTable = pgTable("users", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
@@ -46369,14 +46363,33 @@ var paymentsTable = pgTable("payments", {
   uniqueIndex("payments_txid_idx").on(table.txid),
   uniqueIndex("payments_transaction_id_idx").on(table.transactionId)
 ]);
-var pool = new Pool3({
-  connectionString,
-  ssl: connectionString.includes("supabase.co") ? { rejectUnauthorized: false } : void 0
-});
-var db = drizzle(pool, {
-  schema: {
-    usersTable,
-    paymentsTable
+var schema = {
+  usersTable,
+  paymentsTable
+};
+var pool = null;
+var dbInstance = null;
+function getDatabase() {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error(
+      "DATABASE_URL must be set. Did you forget to configure Vercel environment variables?"
+    );
+  }
+  if (!pool) {
+    pool = new Pool3({
+      connectionString,
+      ssl: connectionString.includes("supabase.co") ? { rejectUnauthorized: false } : void 0
+    });
+  }
+  if (!dbInstance) {
+    dbInstance = drizzle(pool, { schema });
+  }
+  return dbInstance;
+}
+var db = new Proxy({}, {
+  get(_target, property, receiver) {
+    return Reflect.get(getDatabase(), property, receiver);
   }
 });
 
@@ -48712,9 +48725,9 @@ var ZodArray = class _ZodArray extends ZodType {
     return this.min(1, message);
   }
 };
-ZodArray.create = (schema, params) => {
+ZodArray.create = (schema2, params) => {
   return new ZodArray({
-    type: schema,
+    type: schema2,
     minLength: null,
     maxLength: null,
     exactLength: null,
@@ -48722,30 +48735,30 @@ ZodArray.create = (schema, params) => {
     ...processCreateParams(params)
   });
 };
-function deepPartialify(schema) {
-  if (schema instanceof ZodObject) {
+function deepPartialify(schema2) {
+  if (schema2 instanceof ZodObject) {
     const newShape = {};
-    for (const key in schema.shape) {
-      const fieldSchema = schema.shape[key];
+    for (const key in schema2.shape) {
+      const fieldSchema = schema2.shape[key];
       newShape[key] = ZodOptional.create(deepPartialify(fieldSchema));
     }
     return new ZodObject({
-      ...schema._def,
+      ...schema2._def,
       shape: () => newShape
     });
-  } else if (schema instanceof ZodArray) {
+  } else if (schema2 instanceof ZodArray) {
     return new ZodArray({
-      ...schema._def,
-      type: deepPartialify(schema.element)
+      ...schema2._def,
+      type: deepPartialify(schema2.element)
     });
-  } else if (schema instanceof ZodOptional) {
-    return ZodOptional.create(deepPartialify(schema.unwrap()));
-  } else if (schema instanceof ZodNullable) {
-    return ZodNullable.create(deepPartialify(schema.unwrap()));
-  } else if (schema instanceof ZodTuple) {
-    return ZodTuple.create(schema.items.map((item) => deepPartialify(item)));
+  } else if (schema2 instanceof ZodOptional) {
+    return ZodOptional.create(deepPartialify(schema2.unwrap()));
+  } else if (schema2 instanceof ZodNullable) {
+    return ZodNullable.create(deepPartialify(schema2.unwrap()));
+  } else if (schema2 instanceof ZodTuple) {
+    return ZodTuple.create(schema2.items.map((item) => deepPartialify(item)));
   } else {
-    return schema;
+    return schema2;
   }
 }
 var ZodObject = class _ZodObject extends ZodType {
@@ -48961,8 +48974,8 @@ var ZodObject = class _ZodObject extends ZodType {
   //   }) as any;
   //   return merged;
   // }
-  setKey(key, schema) {
-    return this.augment({ [key]: schema });
+  setKey(key, schema2) {
+    return this.augment({ [key]: schema2 });
   }
   // merge<Incoming extends AnyZodObject>(
   //   merging: Incoming
@@ -49408,10 +49421,10 @@ var ZodTuple = class _ZodTuple extends ZodType {
       status.dirty();
     }
     const items = [...ctx.data].map((item, itemIndex) => {
-      const schema = this._def.items[itemIndex] || this._def.rest;
-      if (!schema)
+      const schema2 = this._def.items[itemIndex] || this._def.rest;
+      if (!schema2)
         return null;
-      return schema._parse(new ParseInputLazyPath(ctx, item, ctx.path, itemIndex));
+      return schema2._parse(new ParseInputLazyPath(ctx, item, ctx.path, itemIndex));
     }).filter((x) => !!x);
     if (ctx.common.async) {
       return Promise.all(items).then((results) => {
@@ -49925,9 +49938,9 @@ var ZodPromise = class extends ZodType {
     }));
   }
 };
-ZodPromise.create = (schema, params) => {
+ZodPromise.create = (schema2, params) => {
   return new ZodPromise({
-    type: schema,
+    type: schema2,
     typeName: ZodFirstPartyTypeKind.ZodPromise,
     ...processCreateParams(params)
   });
@@ -50055,17 +50068,17 @@ var ZodEffects = class extends ZodType {
     util.assertNever(effect);
   }
 };
-ZodEffects.create = (schema, effect, params) => {
+ZodEffects.create = (schema2, effect, params) => {
   return new ZodEffects({
-    schema,
+    schema: schema2,
     typeName: ZodFirstPartyTypeKind.ZodEffects,
     effect,
     ...processCreateParams(params)
   });
 };
-ZodEffects.createWithPreprocess = (preprocess, schema, params) => {
+ZodEffects.createWithPreprocess = (preprocess, schema2, params) => {
   return new ZodEffects({
-    schema,
+    schema: schema2,
     effect: { type: "preprocess", transform: preprocess },
     typeName: ZodFirstPartyTypeKind.ZodEffects,
     ...processCreateParams(params)
@@ -50434,15 +50447,18 @@ var ListPaymentsQueryParams = external_exports.object({
 
 // src/lib/auth.ts
 var import_jsonwebtoken = __toESM(require_jsonwebtoken(), 1);
-var SESSION_SECRET = process.env.SESSION_SECRET;
-if (!SESSION_SECRET) {
-  throw new Error("SESSION_SECRET must be set");
+function getSessionSecret() {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    throw new Error("SESSION_SECRET must be set");
+  }
+  return secret;
 }
 function signToken(payload) {
-  return import_jsonwebtoken.default.sign(payload, SESSION_SECRET, { expiresIn: "7d" });
+  return import_jsonwebtoken.default.sign(payload, getSessionSecret(), { expiresIn: "7d" });
 }
 function verifyToken(token) {
-  return import_jsonwebtoken.default.verify(token, SESSION_SECRET);
+  return import_jsonwebtoken.default.verify(token, getSessionSecret());
 }
 function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;

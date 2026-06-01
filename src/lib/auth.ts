@@ -1,9 +1,14 @@
 import jwt from "jsonwebtoken";
 import { type Request, type Response, type NextFunction } from "express";
 
-const SESSION_SECRET = process.env.SESSION_SECRET;
-if (!SESSION_SECRET) {
-  throw new Error("SESSION_SECRET must be set");
+function getSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+
+  if (!secret) {
+    throw new Error("SESSION_SECRET must be set");
+  }
+
+  return secret;
 }
 
 export interface JwtPayload {
@@ -12,11 +17,11 @@ export interface JwtPayload {
 }
 
 export function signToken(payload: JwtPayload): string {
-  return jwt.sign(payload, SESSION_SECRET!, { expiresIn: "7d" });
+  return jwt.sign(payload, getSessionSecret(), { expiresIn: "7d" });
 }
 
 export function verifyToken(token: string): JwtPayload {
-  return jwt.verify(token, SESSION_SECRET!) as JwtPayload;
+  return jwt.verify(token, getSessionSecret()) as JwtPayload;
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
