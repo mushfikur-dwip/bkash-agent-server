@@ -1,9 +1,9 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
-import { db, usersTable } from "../db";
+import { db, usersTable } from "../db/index.js";
 import { eq } from "drizzle-orm";
-import { LoginBody } from "../validation";
-import { signToken, requireAuth } from "../lib/auth";
+import { LoginBody } from "../validation.js";
+import { signToken, requireAuth } from "../lib/auth.js";
 
 const router: IRouter = Router();
 

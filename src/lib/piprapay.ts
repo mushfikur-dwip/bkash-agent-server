@@ -1,4 +1,4 @@
-import { logger } from "./logger";
+import { logger } from "./logger.js";
 
 const PIPRAPAY_BASE_URL = process.env.PIPRAPAY_BASE_URL || "https://pay.antdigitals.com/api";
 const PIPRAPAY_API_KEY = process.env.PIPRAPAY_API_KEY || "";

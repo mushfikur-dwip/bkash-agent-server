@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
-import { db, paymentsTable } from "../db";
+import { db, paymentsTable } from "../db/index.js";
 import { eq, or } from "drizzle-orm";
-import { requireAuth } from "../lib/auth";
+import { requireAuth } from "../lib/auth.js";
 
 const PIPRAPAY_BASE_URL = process.env.PIPRAPAY_BASE_URL || "https://pay.antdigitals.com/api";
 const PIPRAPAY_API_KEY = process.env.PIPRAPAY_API_KEY || "";

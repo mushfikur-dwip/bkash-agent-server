@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
-import { db, paymentsTable } from "../db";
+import { db, paymentsTable } from "../db/index.js";
 import { desc, ilike, sum, count, and, or, sql } from "drizzle-orm";
-import { ListPaymentsQueryParams } from "../validation";
-import { requireAuth } from "../lib/auth";
+import { ListPaymentsQueryParams } from "../validation.js";
+import { requireAuth } from "../lib/auth.js";
 
 const router: IRouter = Router();
 
