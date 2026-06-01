@@ -1,10 +1,8 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { db, paymentsTable } from "../db/index.js";
 import { eq, or } from "drizzle-orm";
 import { requireAuth } from "../lib/auth.js";
-
-const PIPRAPAY_BASE_URL = process.env.PIPRAPAY_BASE_URL || "https://pay.antdigitals.com/api";
-const PIPRAPAY_API_KEY = process.env.PIPRAPAY_API_KEY || "";
+import { createPipraPayCharge, verifyWithPipraPay } from "../lib/piprapay.js";
 
 const router: IRouter = Router();
 
@@ -36,6 +34,14 @@ function parsePipraPayDate(value: string): Date {
   const parsed = new Date(normalized);
 
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function getRequestBaseUrl(req: Request): string {
+  const forwardedProto = req.headers["x-forwarded-proto"];
+  const proto = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto;
+  const protocol = proto || req.protocol || "https";
+
+  return `${protocol}://${req.get("host")}`;
 }
 
 router.post("/piprapay/webhook", async (req, res): Promise<void> => {
@@ -108,22 +114,29 @@ router.post("/piprapay/webhook", async (req, res): Promise<void> => {
 
 router.get("/transactions/piprapay-config", requireAuth, (_req, res): void => {
   res.json({
-    api_key: PIPRAPAY_API_KEY,
-    base_url: PIPRAPAY_BASE_URL,
+    api_key: process.env.PIPRAPAY_API_KEY || "",
+    base_url: process.env.PIPRAPAY_BASE_URL || "https://pay.antdigitals.com/api",
   });
 });
 
 router.post("/transactions/verify", requireAuth, async (req, res): Promise<void> => {
   const txid = getStringField(req.body as Record<string, unknown>, "txid", "transaction_id");
+  const amount = getNumberField(req.body as Record<string, unknown>, "amount");
+  const customerMobile = getStringField(req.body as Record<string, unknown>, "customer_mobile", "sender");
 
   if (!txid) {
     res.status(400).json({ error: "transaction_id is required" });
     return;
   }
 
+  if (amount <= 0) {
+    res.status(400).json({ error: "amount must be greater than 0" });
+    return;
+  }
+
   const transactionId = txid.trim();
 
-  const [payment] = await db
+  const [existing] = await db
     .select()
     .from(paymentsTable)
     .where(
@@ -134,14 +147,90 @@ router.post("/transactions/verify", requireAuth, async (req, res): Promise<void>
     )
     .limit(1);
 
-  if (!payment) {
+  if (existing) {
     res.json({
-      success: false,
-      status: "rejected",
-      message: "Not Found",
+      success: true,
+      status: "approved",
+      message: "Approved",
+      payment: {
+        id: Number(existing.id),
+        txid: existing.transactionId ?? existing.txid,
+        amount: Number(existing.amount),
+        customer_mobile: existing.customerMobile ?? null,
+        provider: existing.provider ?? null,
+        status: existing.status,
+        verified_at: existing.verifiedAt.toISOString(),
+      },
     });
     return;
   }
+
+  const charge = await createPipraPayCharge({
+    txid: transactionId,
+    amount,
+    customerMobile: customerMobile || null,
+    baseUrl: process.env.SERVER_PUBLIC_URL || getRequestBaseUrl(req),
+  });
+
+  if (!charge.success) {
+    res.json({
+      success: false,
+      status: "rejected",
+      message: charge.errorReason ?? "Payment initiation failed",
+    });
+    return;
+  }
+
+  const verification = await verifyWithPipraPay(transactionId, amount);
+
+  if (!verification.success) {
+    res.json({
+      success: false,
+      status: "rejected",
+      message: verification.errorReason ?? "Not Found",
+    });
+    return;
+  }
+
+  const response = (verification.rawResponse ?? {}) as Record<string, unknown>;
+  const responseAmount = getNumberField(response, "amount", "total") || amount;
+  const sender = getStringField(response, "sender_number", "sender", "customer_mobile", "customer_email_mobile") || customerMobile;
+  const ppId = getStringField(response, "pp_id", "payment_id") || verification.paymentId || transactionId;
+  const paymentDate = parsePipraPayDate(getStringField(response, "date", "created_at", "updated_at"));
+
+  const [payment] = await db
+    .insert(paymentsTable)
+    .values({
+      txid: transactionId,
+      transactionId,
+      amount: String(responseAmount),
+      customerMobile: sender || null,
+      provider: "PipraPay",
+      status: "approved",
+      piprapayPaymentId: ppId,
+      piprapayResponse: JSON.stringify({
+        create_charge: charge.rawResponse ?? null,
+        verify: verification.rawResponse ?? null,
+      }),
+      verifiedAt: paymentDate,
+    })
+    .onConflictDoUpdate({
+      target: paymentsTable.transactionId,
+      set: {
+        amount: String(responseAmount),
+        customerMobile: sender || null,
+        provider: "PipraPay",
+        status: "approved",
+        piprapayPaymentId: ppId,
+        piprapayResponse: JSON.stringify({
+          create_charge: charge.rawResponse ?? null,
+          verify: verification.rawResponse ?? null,
+        }),
+        verifiedAt: paymentDate,
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
 
   res.json({
     success: true,

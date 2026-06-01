@@ -50523,8 +50523,158 @@ var auth_default = router2;
 
 // src/routes/transactions.ts
 var import_express3 = __toESM(require_express2(), 1);
-var PIPRAPAY_BASE_URL = process.env.PIPRAPAY_BASE_URL || "https://pay.antdigitals.com/api";
-var PIPRAPAY_API_KEY = process.env.PIPRAPAY_API_KEY || "";
+
+// src/lib/logger.ts
+var import_pino = __toESM(require_pino(), 1);
+var isProduction = process.env.NODE_ENV === "production";
+var logger = (0, import_pino.default)({
+  level: process.env.LOG_LEVEL ?? "info",
+  redact: [
+    "req.headers.authorization",
+    "req.headers.cookie",
+    "res.headers['set-cookie']"
+  ],
+  ...isProduction ? {} : {
+    transport: {
+      target: "pino-pretty",
+      options: { colorize: true }
+    }
+  }
+});
+
+// src/lib/piprapay.ts
+function getApiKey() {
+  return process.env.PIPRAPAY_API_KEY || "";
+}
+function getBaseUrl() {
+  return process.env.PIPRAPAY_BASE_URL || "https://pay.antdigitals.com/api";
+}
+function buildHeaders(body) {
+  return {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "Content-Length": Buffer.byteLength(body).toString(),
+    "mh-piprapay-api-key": getApiKey()
+  };
+}
+function readMessage(data) {
+  if (!data || typeof data !== "object") return void 0;
+  const record = data;
+  const directMessage = record.message;
+  if (typeof directMessage === "string" && directMessage.trim()) return directMessage;
+  const error = record.error;
+  if (error && typeof error === "object") {
+    const message = error.message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return void 0;
+}
+async function createPipraPayCharge(input) {
+  if (!getApiKey()) {
+    logger.warn("PIPRAPAY_API_KEY is not configured");
+    return { success: false, errorReason: "PipraPay API key not configured" };
+  }
+  const normalizedBaseUrl = input.baseUrl.replace(/\/+$/, "");
+  const requestBody = JSON.stringify({
+    full_name: "Transaction Verify",
+    email_mobile: input.customerMobile || "agent@example.com",
+    amount: String(input.amount),
+    metadata: {
+      txid: input.txid,
+      source: "agent-panel"
+    },
+    redirect_url: `${normalizedBaseUrl}/api/piprapay/return`,
+    return_type: "GET",
+    cancel_url: `${normalizedBaseUrl}/api/piprapay/cancel`,
+    webhook_url: `${normalizedBaseUrl}/api/piprapay/webhook`,
+    currency: "BDT"
+  });
+  try {
+    const response = await fetch(`${getBaseUrl()}/create-charge`, {
+      method: "POST",
+      headers: buildHeaders(requestBody),
+      body: requestBody,
+      signal: AbortSignal.timeout(15e3)
+    });
+    const data = await response.json().catch(() => null);
+    logger.info({ txid: input.txid, status: response.status, responseBody: data }, "PipraPay create charge response received");
+    if (!response.ok) {
+      return {
+        success: false,
+        rawResponse: data,
+        errorReason: readMessage(data) ?? `PipraPay create charge error: ${response.status} \u2014 ${JSON.stringify(data)}`
+      };
+    }
+    return {
+      success: true,
+      rawResponse: data
+    };
+  } catch (err) {
+    logger.error({ err, txid: input.txid }, "PipraPay create charge call failed");
+    return {
+      success: false,
+      errorReason: "PipraPay create charge unreachable. Please try again later."
+    };
+  }
+}
+async function verifyWithPipraPay(txid, expectedAmount) {
+  if (!getApiKey()) {
+    logger.warn("PIPRAPAY_API_KEY is not configured");
+    return { success: false, errorReason: "PipraPay API key not configured" };
+  }
+  try {
+    const requestBody = JSON.stringify({ pp_id: txid });
+    const appDomain = (process.env.REPLIT_DOMAINS || "").split(",")[0].trim();
+    const originHeader = appDomain ? `https://${appDomain}` : "";
+    const response = await fetch(`${getBaseUrl()}/verify-payments`, {
+      method: "POST",
+      headers: {
+        ...buildHeaders(requestBody),
+        ...originHeader && { "Origin": originHeader, "Referer": `${originHeader}/` }
+      },
+      body: requestBody,
+      signal: AbortSignal.timeout(15e3)
+    });
+    const data = await response.json();
+    logger.info({ txid, status: response.status, responseBody: data }, "PipraPay verify response received");
+    if (!response.ok) {
+      return {
+        success: false,
+        rawResponse: data,
+        errorReason: readMessage(data) ?? `PipraPay API error: ${response.status} \u2014 ${JSON.stringify(data)}`
+      };
+    }
+    const isSuccess = data.status === "completed";
+    if (!isSuccess) {
+      return {
+        success: false,
+        rawResponse: data,
+        errorReason: `Transaction not completed (status: ${data.status})`
+      };
+    }
+    const responseAmount = Number(data.amount) || Number(data.total) || 0;
+    if (responseAmount > 0 && Math.abs(responseAmount - expectedAmount) > 0.01) {
+      return {
+        success: false,
+        rawResponse: data,
+        errorReason: `Amount mismatch: expected ${expectedAmount}, got ${responseAmount}`
+      };
+    }
+    return {
+      success: true,
+      paymentId: String(data.pp_id || ""),
+      rawResponse: data
+    };
+  } catch (err) {
+    logger.error({ err, txid }, "PipraPay API call failed");
+    return {
+      success: false,
+      errorReason: "PipraPay API unreachable. Please try again later."
+    };
+  }
+}
+
+// src/routes/transactions.ts
 var router3 = (0, import_express3.Router)();
 function getStringField(data, ...keys) {
   for (const key of keys) {
@@ -50548,6 +50698,12 @@ function parsePipraPayDate(value) {
   const normalized = value.includes("T") ? value : value.replace(" ", "T");
   const parsed = new Date(normalized);
   return Number.isNaN(parsed.getTime()) ? /* @__PURE__ */ new Date() : parsed;
+}
+function getRequestBaseUrl(req) {
+  const forwardedProto = req.headers["x-forwarded-proto"];
+  const proto = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto;
+  const protocol = proto || req.protocol || "https";
+  return `${protocol}://${req.get("host")}`;
 }
 router3.post("/piprapay/webhook", async (req, res) => {
   const payload = req.body;
@@ -50608,31 +50764,103 @@ router3.post("/piprapay/webhook", async (req, res) => {
 });
 router3.get("/transactions/piprapay-config", requireAuth, (_req, res) => {
   res.json({
-    api_key: PIPRAPAY_API_KEY,
-    base_url: PIPRAPAY_BASE_URL
+    api_key: process.env.PIPRAPAY_API_KEY || "",
+    base_url: process.env.PIPRAPAY_BASE_URL || "https://pay.antdigitals.com/api"
   });
 });
 router3.post("/transactions/verify", requireAuth, async (req, res) => {
   const txid = getStringField(req.body, "txid", "transaction_id");
+  const amount = getNumberField(req.body, "amount");
+  const customerMobile = getStringField(req.body, "customer_mobile", "sender");
   if (!txid) {
     res.status(400).json({ error: "transaction_id is required" });
     return;
   }
+  if (amount <= 0) {
+    res.status(400).json({ error: "amount must be greater than 0" });
+    return;
+  }
   const transactionId = txid.trim();
-  const [payment] = await db.select().from(paymentsTable).where(
+  const [existing] = await db.select().from(paymentsTable).where(
     or(
       eq(paymentsTable.transactionId, transactionId),
       eq(paymentsTable.txid, transactionId)
     )
   ).limit(1);
-  if (!payment) {
+  if (existing) {
     res.json({
-      success: false,
-      status: "rejected",
-      message: "Not Found"
+      success: true,
+      status: "approved",
+      message: "Approved",
+      payment: {
+        id: Number(existing.id),
+        txid: existing.transactionId ?? existing.txid,
+        amount: Number(existing.amount),
+        customer_mobile: existing.customerMobile ?? null,
+        provider: existing.provider ?? null,
+        status: existing.status,
+        verified_at: existing.verifiedAt.toISOString()
+      }
     });
     return;
   }
+  const charge = await createPipraPayCharge({
+    txid: transactionId,
+    amount,
+    customerMobile: customerMobile || null,
+    baseUrl: process.env.SERVER_PUBLIC_URL || getRequestBaseUrl(req)
+  });
+  if (!charge.success) {
+    res.json({
+      success: false,
+      status: "rejected",
+      message: charge.errorReason ?? "Payment initiation failed"
+    });
+    return;
+  }
+  const verification = await verifyWithPipraPay(transactionId, amount);
+  if (!verification.success) {
+    res.json({
+      success: false,
+      status: "rejected",
+      message: verification.errorReason ?? "Not Found"
+    });
+    return;
+  }
+  const response = verification.rawResponse ?? {};
+  const responseAmount = getNumberField(response, "amount", "total") || amount;
+  const sender = getStringField(response, "sender_number", "sender", "customer_mobile", "customer_email_mobile") || customerMobile;
+  const ppId = getStringField(response, "pp_id", "payment_id") || verification.paymentId || transactionId;
+  const paymentDate = parsePipraPayDate(getStringField(response, "date", "created_at", "updated_at"));
+  const [payment] = await db.insert(paymentsTable).values({
+    txid: transactionId,
+    transactionId,
+    amount: String(responseAmount),
+    customerMobile: sender || null,
+    provider: "PipraPay",
+    status: "approved",
+    piprapayPaymentId: ppId,
+    piprapayResponse: JSON.stringify({
+      create_charge: charge.rawResponse ?? null,
+      verify: verification.rawResponse ?? null
+    }),
+    verifiedAt: paymentDate
+  }).onConflictDoUpdate({
+    target: paymentsTable.transactionId,
+    set: {
+      amount: String(responseAmount),
+      customerMobile: sender || null,
+      provider: "PipraPay",
+      status: "approved",
+      piprapayPaymentId: ppId,
+      piprapayResponse: JSON.stringify({
+        create_charge: charge.rawResponse ?? null,
+        verify: verification.rawResponse ?? null
+      }),
+      verifiedAt: paymentDate,
+      updatedAt: /* @__PURE__ */ new Date()
+    }
+  }).returning();
   res.json({
     success: true,
     status: "approved",
@@ -50772,24 +51000,6 @@ router5.use(auth_default);
 router5.use(transactions_default);
 router5.use(payments_default);
 var routes_default = router5;
-
-// src/lib/logger.ts
-var import_pino = __toESM(require_pino(), 1);
-var isProduction = process.env.NODE_ENV === "production";
-var logger = (0, import_pino.default)({
-  level: process.env.LOG_LEVEL ?? "info",
-  redact: [
-    "req.headers.authorization",
-    "req.headers.cookie",
-    "res.headers['set-cookie']"
-  ],
-  ...isProduction ? {} : {
-    transport: {
-      target: "pino-pretty",
-      options: { colorize: true }
-    }
-  }
-});
 
 // src/app.ts
 var app = (0, import_express6.default)();
