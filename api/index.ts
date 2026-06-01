@@ -5,7 +5,7 @@ export default async function handler(
   res: VercelResponse,
 ) {
   try {
-    const { default: app } = await import("../src/app");
+    const { default: app } = await import("../src/app.js");
 
     return app(req, res);
   } catch (err) {
